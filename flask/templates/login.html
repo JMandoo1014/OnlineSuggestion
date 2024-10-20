@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>로그인</title>
+</head>
+<body>
+    <div class="container">
+        <h1>로그인</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="messages">
+            {% for category, message in messages %}
+            <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        <form method="post" action="/login">
+            <label for="username">학번:</label>
+            <input type="text" id="username" name="username" required>
+            <label for="password">비밀번호:</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">로그인</button>
+        </form>
+        <a href="/register">회원가입</a>
+    </div>
+</body>
+</html>

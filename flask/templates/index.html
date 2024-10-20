@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic&display=swap" rel="stylesheet">
+    <title>화봉고등학교 건의함</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="logo" class="logo">
+            <h1>화봉 건의함</h1>
+        </div>
+        
+        {% if user_logged_in %}
+            <p>{{ username }}으로 로그인 되었습니다.</p>
+            <a href="/logout">로그아웃</a>
+        {% else %}
+            <p>로그인 후 건의를 제출할 수 있습니다.</p>
+            <a href="/login">로그인</a> | <a href="/register">회원가입</a>
+        {% endif %}
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="messages">
+            {% for category, message in messages %}
+            <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        
+        {% if user_logged_in %}
+        <form method="post" action="/">
+            <label for="suggestion">건의 내용:</label>
+            <textarea id="suggestion" name="suggestion" required></textarea>
+            <button type="submit">제출</button>
+        </form>
+        {% endif %}
+    </div>
+</body>
+</html>
