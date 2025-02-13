@@ -1,18 +1,41 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-import sqlite3
 import re
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+import pytz
+
+from dotenv import load_dotenv
+import mysql.connector
+from mysql.connector import Error
+
+load_dotenv()
+
+# AWS RDS MySQL 연결 정보
+DB_HOST = os.getenv("DB_HOST")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 app = Flask(__name__)
-app.secret_key = 'hwabongsuggestionkey'
+app.secret_key = 'yoursecretkey'
 
 # 금칙어 목록
-BAD_WORDS = ['시발', '미친', '병신', '새끼', 'ㅅㅂ', 'ㅁㅊ', 'ㅂㅅ', 'ㅅㄲ', '느금마', '애미', 'ㅇㅁ', 'ㄴㄱㅁ', 'ㅅ1ㅂ', '시1발', '좆']
+BAD_WORDS = []
 
-# 데이터베이스 파일 경로
-USER_DB = 'users.db'
-SUGGESTION_DB = 'suggestions.db'
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        if conn.is_connected():
+            return conn
+    except Error as e:
+        print(f"Error: {e}")
+        return None
 
 def is_valid_student_id(student_id):
     return re.match(r'^\d{4}$', student_id)
@@ -21,33 +44,39 @@ def contains_bad_words(text):
     return any(word in text for word in BAD_WORDS)
 
 def can_submit(user_id):
-    conn = sqlite3.connect(SUGGESTION_DB)
-    c = conn.cursor()
-    c.execute("SELECT timestamp FROM suggestions WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user_id,))
-    last_submission = c.fetchone()
-    conn.close()
+    conn = get_db_connection()
+    if conn:
+        c = conn.cursor()
+        c.execute("SELECT timestamp FROM suggestions WHERE user_id = %s ORDER BY timestamp DESC LIMIT 1", (user_id,))
+        last_submission = c.fetchone()
+        conn.close()
 
-    if last_submission:
-        last_submission_time = datetime.strptime(last_submission[0], '%Y-%m-%d %H:%M:%S')
-        if datetime.now() - last_submission_time < timedelta(hours=1):
-            return False
-    return True
+        if last_submission:
+            last_submission_time = datetime.strptime(last_submission[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC) 
+            if datetime.utcnow().replace(tzinfo=pytz.UTC)  - last_submission_time < timedelta(hours=1):
+                return False
+        return True
+    return False
 
 def get_admin_credentials():
-    conn = sqlite3.connect(USER_DB)
-    c = conn.cursor()
-    c.execute("SELECT username, password FROM admins WHERE id = 1")
-    admin = c.fetchone()
-    conn.close()
-    return admin
+    conn = get_db_connection()
+    if conn:
+        c = conn.cursor()
+        c.execute("SELECT username, password FROM admins WHERE id = 1")
+        admin = c.fetchone()
+        conn.close()
+        return admin
+    return None
 
 def get_user_id(username):
-    conn = sqlite3.connect(USER_DB)
-    c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE username = ?", (username,))
-    user_id = c.fetchone()
-    conn.close()
-    return user_id[0] if user_id else None
+    conn = get_db_connection()
+    if conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM users WHERE username = %s", (username,))
+        user_id = c.fetchone()
+        conn.close()
+        return user_id[0] if user_id else None
+    return None
 
 # 메인화면
 @app.route('/', methods=['GET', 'POST'])
@@ -74,9 +103,9 @@ def index():
         elif contains_bad_words(suggestion):
             flash('건의 내용에 금칙어가 포함되어 있습니다.', 'error')
         else:
-            conn = sqlite3.connect(SUGGESTION_DB)
+            conn = get_db_connection()
             c = conn.cursor()
-            c.execute("INSERT INTO suggestions (user_id, suggestion, timestamp) VALUES (?, ?, ?)", 
+            c.execute("INSERT INTO suggestions (user_id, suggestion, timestamp) VALUES (%s, %s, %s)", 
                       (user_id, suggestion, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
             conn.close()
@@ -102,12 +131,12 @@ def register():
         password = request.form['password']
         password_hash = generate_password_hash(password)
 
-        conn = sqlite3.connect(USER_DB)
+        conn = get_db_connection()
         c = conn.cursor()
         try:
-            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password_hash))
+            c.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password_hash))
             conn.commit()
-        except sqlite3.IntegrityError:
+        except mysql.connector.IntegrityError:
             flash('이미 등록된 학번입니다.', 'error')
             conn.close()
             return render_template('register.html')
@@ -124,9 +153,9 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        conn = sqlite3.connect(USER_DB)
+        conn = get_db_connection()
         c = conn.cursor()
-        c.execute("SELECT id, password FROM users WHERE username = ?", (username,))
+        c.execute("SELECT id, password FROM users WHERE username = %s", (username,))
         user = c.fetchone()
         conn.close()
 
@@ -169,14 +198,14 @@ def admin():
         flash('관리자 로그인 후에 접근할 수 있습니다.', 'error')
         return redirect(url_for('admin_login'))
 
-    conn = sqlite3.connect(SUGGESTION_DB)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT * FROM suggestions ORDER BY timestamp DESC')
     suggestions = c.fetchall()
     conn.close()
 
     # 사용자 이름을 가져오기 위한 추가 쿼리
-    conn = sqlite3.connect(USER_DB)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT id, username FROM users')
     user_names = dict(c.fetchall())  # 모든 사용자 ID와 이름을 미리 가져옴
