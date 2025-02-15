@@ -1,5 +1,4 @@
 <h1>화봉고등학교 건의함 사이트 </h1>
-http://화봉고건의함.kro.kr
 <h3><b>BackEnd : Flask / FrontEnd : CSS, HTML / Server : AWS</b></h3>
 <h2 style="border-bottom: 1px solid #d8dee4;">environment</h2>
 <p>
